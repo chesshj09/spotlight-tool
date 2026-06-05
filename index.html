@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>스포트라이트 영상 생성기</title>
+  <style>
+    :root{--bg:#f4f7fb;--card:#fff;--text:#1f2937;--muted:#6b7280;--blue:#2563eb;--blue2:#1d4ed8;--line:#dbe4f0;--danger:#ef4444;}
+    *{box-sizing:border-box} body{margin:0;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:linear-gradient(180deg,#eef5ff,#f8fafc);color:var(--text)}
+    .wrap{max-width:1100px;margin:0 auto;padding:28px 18px 60px}.hero{text-align:center;margin-bottom:18px}.hero h1{margin:0 0 10px;font-size:30px;color:#1463d8}.hero p{margin:6px 0;color:var(--muted);line-height:1.6}.panel{background:var(--card);border:1px solid var(--line);border-radius:18px;box-shadow:0 10px 30px rgba(30,64,175,.08);padding:18px;margin:14px 0}.tips{background:#eef6ff;border-color:#cfe3ff;text-align:left}.tips b{color:#1463d8}.controls{display:grid;grid-template-columns:repeat(5,minmax(150px,1fr));gap:14px;align-items:end}.control label{display:block;font-size:13px;font-weight:700;color:#475569;margin-bottom:7px}.control input[type="range"]{width:100%}.control input,.control select{width:100%;padding:10px 11px;border:1px solid var(--line);border-radius:10px;background:white}.buttons{display:flex;flex-wrap:wrap;gap:10px;justify-content:center;margin-top:14px}button,.fileLabel{border:0;border-radius:999px;padding:11px 18px;font-weight:800;cursor:pointer;background:var(--blue);color:white;box-shadow:0 6px 14px rgba(37,99,235,.22);display:inline-flex;align-items:center;gap:6px}button:hover,.fileLabel:hover{background:var(--blue2)}button.secondary{background:#e5edf8;color:#26415f;box-shadow:none}button.danger{background:#ef4444}.fileLabel input{display:none}.stageWrap{display:flex;justify-content:center;overflow:auto;padding:14px}.canvasBox{position:relative;border-radius:14px;box-shadow:0 0 0 3px #1d64ff,0 15px 35px rgba(15,23,42,.15);background:#111;line-height:0}.canvasBox.empty{box-shadow:none;background:transparent}canvas{max-width:min(92vw,900px);height:auto;border-radius:12px;cursor:crosshair}.status{text-align:center;color:var(--muted);font-size:14px;margin-top:8px}.pointList{font-size:13px;color:var(--muted);text-align:center;line-height:1.6}.hidden{display:none!important}@media(max-width:900px){.controls{grid-template-columns:repeat(2,1fr)}}@media(max-width:520px){.controls{grid-template-columns:1fr}.hero h1{font-size:24px}}
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <section class="hero">
+      <h1>🔦 스포트라이트 영상 생성기</h1>
+      <p>이미지를 올리고, 화면 위를 클릭해서 빛이 지나갈 경로를 직접 찍은 뒤 <b>WEBM 영상</b>으로 저장합니다.</p>
+    </section>
+
+    <section class="panel tips">
+      <p><b>사용법</b></p>
+      <p>1. 이미지 업로드 → 2. 이미지 위에 경로 점을 순서대로 클릭 → 3. 미리보기 → 4. 녹화 후 다운로드</p>
+      <p>※ PC 크롬 기준 권장. 저장 형식은 브라우저 녹화 안정성이 높은 <b>WEBM</b>입니다.</p>
+    </section>
+
+    <section class="panel">
+      <div class="controls">
+        <div class="control"><label>이미지</label><label class="fileLabel">🖼️ 이미지 업로드<input id="file" type="file" accept="image/*"></label></div>
+        <div class="control"><label>스포트라이트 크기: <span id="radiusVal">150</span></label><input id="radius" type="range" min="40" max="420" value="150"></div>
+        <div class="control"><label>어두움: <span id="darkVal">82</span>%</label><input id="darkness" type="range" min="0" max="95" value="82"></div>
+        <div class="control"><label>총 영상 길이: <span id="durationVal">6</span>초</label><input id="duration" type="range" min="2" max="20" value="6"></div>
+        <div class="control"><label>빛 가장자리</label><select id="edge"><option value="soft">부드럽게</option><option value="normal" selected>보통</option><option value="hard">뚜렷하게</option></select></div>
+      </div>
+      <div class="buttons">
+        <button id="preview">▶ 미리보기</button>
+        <button id="record">🔴 녹화 후 다운로드</button>
+        <button id="undo" class="secondary">↩ 마지막 점 삭제</button>
+        <button id="clear" class="secondary">🧹 경로 초기화</button>
+        <button id="reset" class="danger">이미지 삭제</button>
+      </div>
+      <div class="status" id="status">이미지를 업로드해 주세요.</div>
+      <div class="pointList" id="pointList"></div>
+    </section>
+
+    <section class="stageWrap">
+      <div id="canvasBox" class="canvasBox empty"><canvas id="canvas" class="hidden"></canvas></div>
+    </section>
+  </main>
+
+<script>
+const fileInput=document.getElementById('file');const canvas=document.getElementById('canvas');const ctx=canvas.getContext('2d');const box=document.getElementById('canvasBox');
+const radius=document.getElementById('radius'),darkness=document.getElementById('darkness'),duration=document.getElementById('duration'),edge=document.getElementById('edge');
+const radiusVal=document.getElementById('radiusVal'),darkVal=document.getElementById('darkVal'),durationVal=document.getElementById('durationVal'),statusEl=document.getElementById('status'),pointList=document.getElementById('pointList');
+let img=null, points=[], playing=false, animReq=null;
+function setStatus(t){statusEl.textContent=t} function updateVals(){radiusVal.textContent=radius.value;darkVal.textContent=darkness.value;durationVal.textContent=duration.value} [radius,darkness,duration].forEach(el=>el.addEventListener('input',()=>{updateVals();drawStatic()})); edge.addEventListener('change',drawStatic); updateVals();
+fileInput.addEventListener('change',e=>{const f=e.target.files[0]; if(!f)return; const url=URL.createObjectURL(f); const image=new Image(); image.onload=()=>{img=image; const maxW=900; const scale=Math.min(1,maxW/image.width); canvas.width=Math.round(image.width*scale); canvas.height=Math.round(image.height*scale); points=[]; canvas.classList.remove('hidden'); box.classList.remove('empty'); setStatus('이미지 위를 클릭해서 스포트라이트 경로를 찍어 주세요. 최소 1개 이상.'); drawStatic(); URL.revokeObjectURL(url);}; image.src=url;});
+canvas.addEventListener('click',e=>{if(!img||playing)return; const r=canvas.getBoundingClientRect(); const x=(e.clientX-r.left)*(canvas.width/r.width); const y=(e.clientY-r.top)*(canvas.height/r.height); points.push({x,y}); drawStatic();});
+function drawBase(){ctx.clearRect(0,0,canvas.width,canvas.height); if(img) ctx.drawImage(img,0,0,canvas.width,canvas.height)}
+function drawOverlay(x,y){const rad=Number(radius.value), alpha=Number(darkness.value)/100; ctx.save(); ctx.fillStyle=`rgba(0,0,0,${alpha})`; ctx.fillRect(0,0,canvas.width,canvas.height); ctx.globalCompositeOperation='destination-out'; let inner=rad*.35, outer=rad; if(edge.value==='soft'){inner=rad*.15;outer=rad*1.15}else if(edge.value==='hard'){inner=rad*.8;outer=rad*.95} const g=ctx.createRadialGradient(x,y,inner,x,y,outer); g.addColorStop(0,'rgba(0,0,0,1)'); g.addColorStop(1,'rgba(0,0,0,0)'); ctx.fillStyle=g; ctx.beginPath(); ctx.arc(x,y,outer,0,Math.PI*2); ctx.fill(); ctx.restore();}
+function drawPoints(){ctx.save(); ctx.font='14px system-ui'; points.forEach((p,i)=>{ctx.fillStyle='#2563eb'; ctx.strokeStyle='white'; ctx.lineWidth=3; ctx.beginPath(); ctx.arc(p.x,p.y,7,0,Math.PI*2); ctx.fill(); ctx.stroke(); ctx.fillStyle='white'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(i+1,p.x,p.y); if(i>0){ctx.strokeStyle='#60a5fa';ctx.lineWidth=2;ctx.setLineDash([5,5]);ctx.beginPath();ctx.moveTo(points[i-1].x,points[i-1].y);ctx.lineTo(p.x,p.y);ctx.stroke();}}); ctx.restore(); pointList.textContent=points.length?`현재 경로 점: ${points.length}개`:''}
+function drawStatic(){if(!img)return; drawBase(); const p=points[points.length-1]||{x:canvas.width/2,y:canvas.height/2}; drawOverlay(p.x,p.y); drawPoints();}
+function getPos(t){if(points.length===0)return{x:canvas.width/2,y:canvas.height/2}; if(points.length===1)return points[0]; const segs=points.length-1; const total=Number(duration.value)*1000; const segLen=total/segs; const idx=Math.min(segs-1,Math.floor(t/segLen)); const local=(t-idx*segLen)/segLen; const ease=local<.5?2*local*local:1-Math.pow(-2*local+2,2)/2; const a=points[idx],b=points[idx+1]; return{x:a.x+(b.x-a.x)*ease,y:a.y+(b.y-a.y)*ease};}
+function playPreview(){if(!img)return setStatus('이미지를 먼저 업로드해 주세요.'); if(points.length<1)return setStatus('경로 점을 최소 1개 찍어 주세요.'); cancelAnimationFrame(animReq); playing=true; const start=performance.now(), total=Number(duration.value)*1000; setStatus('미리보기 재생 중...'); function frame(now){const t=Math.min(total,now-start); const p=getPos(t); drawBase(); drawOverlay(p.x,p.y); if(t<total)animReq=requestAnimationFrame(frame); else{playing=false;setStatus('미리보기 완료. 경로를 수정하거나 녹화할 수 있어요.');drawStatic();}} animReq=requestAnimationFrame(frame);}
+document.getElementById('preview').onclick=playPreview;
+document.getElementById('undo').onclick=()=>{if(playing)return; points.pop(); drawStatic();}; document.getElementById('clear').onclick=()=>{if(playing)return; points=[]; drawStatic(); setStatus('경로를 초기화했어요. 다시 점을 찍어 주세요.');}; document.getElementById('reset').onclick=()=>{if(playing)return; img=null; points=[]; canvas.classList.add('hidden'); box.classList.add('empty'); ctx.clearRect(0,0,canvas.width,canvas.height); fileInput.value=''; pointList.textContent=''; setStatus('이미지를 업로드해 주세요.');};
+document.getElementById('record').onclick=async()=>{if(!img)return setStatus('이미지를 먼저 업로드해 주세요.'); if(points.length<1)return setStatus('경로 점을 최소 1개 찍어 주세요.'); if(!canvas.captureStream||!window.MediaRecorder)return setStatus('이 브라우저는 녹화를 지원하지 않아요. PC 크롬으로 열어 주세요.'); cancelAnimationFrame(animReq); const stream=canvas.captureStream(60); const mime=MediaRecorder.isTypeSupported('video/webm;codecs=vp9')?'video/webm;codecs=vp9':'video/webm'; const rec=new MediaRecorder(stream,{mimeType:mime,videoBitsPerSecond:8000000}); const chunks=[]; rec.ondataavailable=e=>{if(e.data.size)chunks.push(e.data)}; rec.onstop=()=>{const blob=new Blob(chunks,{type:'video/webm'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=`spotlight-${Date.now()}.webm`; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href),1000); setStatus('다운로드가 시작됐어요.'); drawStatic();}; playing=true; setStatus('녹화 중... 잠시 기다려 주세요.'); rec.start(); const start=performance.now(), total=Number(duration.value)*1000; function frame(now){const t=Math.min(total,now-start); const p=getPos(t); drawBase(); drawOverlay(p.x,p.y); if(t<total)animReq=requestAnimationFrame(frame); else{playing=false; setTimeout(()=>rec.stop(),250);}} animReq=requestAnimationFrame(frame);};
+drawStatic();
+</script>
+</body>
+</html>
